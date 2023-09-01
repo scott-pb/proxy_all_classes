@@ -1,0 +1,7 @@
+ARG_ENABLE('proxy_all_classes', 'proxy_all_classes support', 'no');
+
+if (PHP_PROXY_ALL_CLASSES != 'no') {
+	AC_DEFINE('HAVE_PROXY_ALL_CLASSES', 1, 'proxy_all_classes support enabled');
+
+	EXTENSION('proxy_all_classes', 'proxy_all_classes.c', null, '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1');
+}
