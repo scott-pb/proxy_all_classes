@@ -73,6 +73,11 @@ proxy_all_classes.lo: \
   /usr/local/php8.1.11/include/php/Zend/zend_constants.h \
   /usr/local/php8.1.11/include/php/main/php_reentrancy.h \
   /usr/local/php8.1.11/include/php/ext/standard/info.h \
+  /usr/local/php8.1.11/include/php/ext/standard/php_var.h \
+  /usr/local/php8.1.11/include/php/ext/standard/basic_functions.h \
+  /usr/local/php8.1.11/include/php/ext/standard/php_filestat.h \
+  /usr/local/php8.1.11/include/php/Zend/zend_highlight.h \
+  /usr/local/php8.1.11/include/php/ext/standard/url_scanner_ex.h \
   php_proxy_all_classes.h proxy_all_classes_arginfo.h \
   /usr/local/php8.1.11/include/php/Zend/zend_attributes.h \
   /usr/local/php8.1.11/include/php/ext/pdo/php_pdo.h \
