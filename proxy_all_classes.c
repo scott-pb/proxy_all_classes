@@ -60,16 +60,14 @@ void my_execute_ex(zend_execute_data *execute_data)
 		original_zend_execute_ex(execute_data);
 		return;
 	}
-
-	zend_declare_property_string(ce, ZEND_STRL("className"), ZSTR_VAL(execute_data->func->common.scope->name), ZEND_ACC_PUBLIC);
-	zend_declare_property_string(ce, ZEND_STRL("method"), ZSTR_VAL(execute_data->func->common.function_name), ZEND_ACC_PUBLIC);
-	ce->ce_flags |= ZEND_ACC_PUBLIC;
-	ce->name = class_name;
-	php_printf("%d\n", zend_object_properties_size(ce));
-	zend_object *obj = zend_objects_new(ce);
+	
+	zend_declare_property_string(ce, "className", strlen("className"), execute_data->func->common.scope->name->val, ZEND_ACC_PUBLIC);
+	zend_declare_property_string(ce, "method", strlen("method"), execute_data->func->common.function_name->val, ZEND_ACC_PUBLIC);
+	
+	zval obj;
+	object_init_ex(&obj,ce);
 
 	zval *ret = execute_data->return_value;
-	zend_vm_stack_free_call_frame(execute_data);
 
 	uint32_t param_count = ZEND_CALL_NUM_ARGS(execute_data);
 	zend_execute_data *call = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_FUNCTION, fbc, param_count, ce);
@@ -78,9 +76,12 @@ void my_execute_ex(zend_execute_data *execute_data)
 	{
 		ZVAL_COPY(ZEND_CALL_ARG(call, i + 1), ZEND_CALL_VAR_NUM(execute_data, i));
 	}
+	call->This = obj;
 
 	call->prev_execute_data = execute_data;
 	zend_init_execute_data(call, (zend_op_array *)fbc, ret);
+	zend_vm_stack_free_call_frame(execute_data);
+	zend_vm_stack_free_call_frame(call);
 	original_zend_execute_ex(call);
 }
 /* {{{ PHP_RINIT_FUNCTION */
