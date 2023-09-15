@@ -27,25 +27,33 @@ static void (*original_zend_execute_ex)(zend_execute_data *execute_data);
 void my_execute_ex(zend_execute_data *execute_data)
 {
 
+	if (execute_data->func == NULL)
+	{
+		original_zend_execute_ex(execute_data);
+		return;
+	}
+	// 方法上有没有注解
 	if (execute_data->func->common.attributes == NULL)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
 
+	// 获取方法上的指定注解
 	if (zend_get_attribute_str(execute_data->func->common.attributes, ZEND_STRL("app\\attributes\\translationattribute")) == NULL)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
 
-	if (execute_data->func == NULL)
+	char *proxy_class_name = "App\\Service\\TransactionalServer";
+	if (strcmp(ZSTR_VAL(execute_data->prev_execute_data->func->common.scope->name), proxy_class_name) == 0)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
 
-	char *proxy_class_name = "App\\Service\\TransactionalServer";
+	// 代理类
 	zend_string *class_name = zend_string_init(proxy_class_name, strlen(proxy_class_name), 0);
 	zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
 	if (ce == NULL)
@@ -53,36 +61,39 @@ void my_execute_ex(zend_execute_data *execute_data)
 		php_error_docref(NULL, E_WARNING, "Class %s not found", proxy_class_name);
 		return;
 	}
-
+	// 代理方法
 	zend_function *fbc = zend_hash_find_ptr(&ce->function_table, zend_string_init(ZEND_STRL("transaction"), 0));
 	if (fbc == NULL)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
-	
+	// 需要代理的 类名+方法名设置为代理类的属性
 	zend_declare_property_string(ce, "className", strlen("className"), execute_data->func->common.scope->name->val, ZEND_ACC_PUBLIC);
 	zend_declare_property_string(ce, "method", strlen("method"), execute_data->func->common.function_name->val, ZEND_ACC_PUBLIC);
-	
-	zval obj;
-	object_init_ex(&obj,ce);
 
+	zval obj;
+	object_init_ex(&obj, ce);
 	zval *ret = execute_data->return_value;
 
+	// 需要代理类的参数
 	uint32_t param_count = ZEND_CALL_NUM_ARGS(execute_data);
-	zend_execute_data *call = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_FUNCTION, fbc, param_count, ce);
+
+	// fbc->common.num_args = param_count;
+	//  新增一个栈 且在栈顶
+	zend_execute_data *call = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_FUNCTION, fbc, param_count, Z_OBJ_P(&obj));
 
 	for (uint32_t i = 0; i < param_count; i++)
 	{
-		ZVAL_COPY(ZEND_CALL_ARG(call, i + 1), ZEND_CALL_VAR_NUM(execute_data, i));
+		ZVAL_COPY(ZEND_CALL_VAR_NUM(call, i), ZEND_CALL_VAR_NUM(execute_data, i));
 	}
-	call->This = obj;
 
-	call->prev_execute_data = execute_data;
 	zend_init_execute_data(call, (zend_op_array *)fbc, ret);
+	call->prev_execute_data = execute_data;
+
+	original_zend_execute_ex(call);
 	zend_vm_stack_free_call_frame(execute_data);
 	zend_vm_stack_free_call_frame(call);
-	original_zend_execute_ex(call);
 }
 /* {{{ PHP_RINIT_FUNCTION */
 PHP_RINIT_FUNCTION(proxy_all_classes)
@@ -91,15 +102,20 @@ PHP_RINIT_FUNCTION(proxy_all_classes)
 	ZEND_TSRMLS_CACHE_UPDATE();
 #endif
 
-	original_zend_execute_ex = zend_execute_ex;
-	zend_execute_ex = my_execute_ex;
-
 	return SUCCESS;
 }
 
 PHP_MSHUTDOWN_FUNCTION(proxy_all_classes)
 {
 	zend_execute_ex = original_zend_execute_ex;
+
+	return SUCCESS;
+}
+
+PHP_MINIT_FUNCTION(proxy_all_classes)
+{
+	original_zend_execute_ex = zend_execute_ex;
+	zend_execute_ex = my_execute_ex;
 
 	return SUCCESS;
 }
@@ -120,7 +136,7 @@ zend_module_entry proxy_all_classes_module_entry = {
 	STANDARD_MODULE_HEADER,
 	"proxy_all_classes",			  /* Extension name */
 	ext_functions,					  /* zend_function_entry */
-	NULL,							  /* PHP_MINIT - Module initialization */
+	PHP_MINIT(proxy_all_classes),	  /* PHP_MINIT - Module initialization */
 	PHP_MSHUTDOWN(proxy_all_classes), /* PHP_MSHUTDOWN - Module shutdown */
 	PHP_RINIT(proxy_all_classes),	  /* PHP_RINIT - Request initialization */
 	NULL,							  /* PHP_RSHUTDOWN - Request shutdown */
