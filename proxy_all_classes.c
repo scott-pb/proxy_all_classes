@@ -5,6 +5,7 @@
 #endif
 
 #include "php.h"
+#include "php_ini.h"
 #include "ext/standard/info.h"
 #include "ext/standard/php_var.h"
 #include "php_proxy_all_classes.h"
@@ -21,6 +22,67 @@
 	ZEND_PARSE_PARAMETERS_START(0, 0) \
 	ZEND_PARSE_PARAMETERS_END()
 #endif
+
+static zend_result ini_status = SUCCESS;
+
+struct proxy_all_classes_attributes
+{
+	char * proxy_attributes_val;
+	size_t proxy_attributes_len;
+};
+
+
+//ini属性结构体
+ZEND_BEGIN_MODULE_GLOBALS(proxy_all_classes)
+	char * proxy_attributes;
+	char * proxy_class_name;
+	char * proxy_method;
+ZEND_END_MODULE_GLOBALS(proxy_all_classes)
+
+//初始化
+static PHP_GINIT_FUNCTION(proxy_all_classes);
+
+ZEND_DECLARE_MODULE_GLOBALS(proxy_all_classes)
+
+
+/* {{{ PHP_GINIT_FUNCTION */
+static PHP_GINIT_FUNCTION(proxy_all_classes)
+{
+#if defined(COMPILE_DL_BCMATH) && defined(ZTS)
+	ZEND_TSRMLS_CACHE_UPDATE();
+#endif
+	proxy_all_classes_globals->proxy_attributes = "";
+	proxy_all_classes_globals->proxy_class_name = "";
+	proxy_all_classes_globals->proxy_method = "";
+}
+/* }}} */
+
+
+static PHP_INI_MH(OnUpdateStringNotNull)
+{
+	if(ini_status == FAILURE){
+		return FAILURE;
+	}
+	if (ZSTR_LEN(new_value) <= 0) {
+		zend_error(E_ERROR, "The %s ini Must be set",ZSTR_VAL(entry->name));
+		ini_status = FAILURE;
+		return FAILURE;
+	}
+
+
+	OnUpdateString(entry, new_value, mh_arg1, mh_arg2, mh_arg3, stage);
+	ini_status = SUCCESS;
+	return SUCCESS;
+}
+
+// name, default_value, modifiable, on_modify, property_name, struct_type, struct_ptr
+PHP_INI_BEGIN()
+	STD_PHP_INI_ENTRY("proxy.attributes", "", PHP_INI_ALL, OnUpdateStringNotNull, proxy_attributes, zend_proxy_all_classes_globals, proxy_all_classes_globals)
+	STD_PHP_INI_ENTRY("proxy.class_name", "", PHP_INI_ALL, OnUpdateStringNotNull, proxy_class_name, zend_proxy_all_classes_globals, proxy_all_classes_globals)
+	STD_PHP_INI_ENTRY("proxy.method", "", PHP_INI_ALL, OnUpdateStringNotNull, proxy_method, zend_proxy_all_classes_globals, proxy_all_classes_globals)
+PHP_INI_END()
+
+
 
 static void (*original_zend_execute_ex)(zend_execute_data *execute_data);
 
@@ -39,32 +101,33 @@ void my_execute_ex(zend_execute_data *execute_data)
 		return;
 	}
 
+	zend_string *proxy_attributes =  zend_string_tolower(zend_string_init(proxy_all_classes_globals.proxy_attributes,strlen(proxy_all_classes_globals.proxy_attributes),0));
 	// 获取方法上的指定注解
-	if (zend_get_attribute_str(execute_data->func->common.attributes, ZEND_STRL("app\\attributes\\translationattribute")) == NULL)
+	if (zend_get_attribute_str(execute_data->func->common.attributes, ZSTR_VAL(proxy_attributes),ZSTR_LEN(proxy_attributes)) == NULL)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
 
-	char *proxy_class_name = "App\\Service\\TransactionalServer";
-	if (strcmp(ZSTR_VAL(execute_data->prev_execute_data->func->common.scope->name), proxy_class_name) == 0)
+	if (strcmp(ZSTR_VAL(execute_data->prev_execute_data->func->common.scope->name), proxy_all_classes_globals.proxy_class_name) == 0)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
 	}
 
 	// 代理类
-	zend_string *class_name = zend_string_init(proxy_class_name, strlen(proxy_class_name), 0);
+	zend_string *class_name = zend_string_init(proxy_all_classes_globals.proxy_class_name, strlen(proxy_all_classes_globals.proxy_class_name), 0);
 	zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
 	if (ce == NULL)
 	{
-		php_error_docref(NULL, E_WARNING, "Class %s not found", proxy_class_name);
+		php_error_docref(NULL, E_WARNING, "Class %s not found", proxy_all_classes_globals.proxy_class_name);
 		return;
 	}
 	// 代理方法
-	zend_function *fbc = zend_hash_find_ptr(&ce->function_table, zend_string_init(ZEND_STRL("transaction"), 0));
+	zend_function *fbc = zend_hash_find_ptr(&ce->function_table, zend_string_init(proxy_all_classes_globals.proxy_method,strlen(proxy_all_classes_globals.proxy_method),0));
 	if (fbc == NULL)
 	{
+		php_error_docref(NULL, E_WARNING, "The method:%s of the class:%s are not defined", proxy_all_classes_globals.proxy_method,proxy_all_classes_globals.proxy_class_name);
 		original_zend_execute_ex(execute_data);
 		return;
 	}
@@ -101,23 +164,30 @@ PHP_RINIT_FUNCTION(proxy_all_classes)
 #if defined(ZTS) && defined(COMPILE_DL_PROXY_ALL_CLASSES)
 	ZEND_TSRMLS_CACHE_UPDATE();
 #endif
-
+	
 	return SUCCESS;
 }
 
 PHP_MSHUTDOWN_FUNCTION(proxy_all_classes)
 {
-	zend_execute_ex = original_zend_execute_ex;
-
+	UNREGISTER_INI_ENTRIES();
+	if(ini_status == SUCCESS){
+		zend_execute_ex = original_zend_execute_ex;
+	}
+	
+	
 	return SUCCESS;
 }
 
 PHP_MINIT_FUNCTION(proxy_all_classes)
 {
-	original_zend_execute_ex = zend_execute_ex;
-	zend_execute_ex = my_execute_ex;
+	REGISTER_INI_ENTRIES();
+	if(ini_status == SUCCESS){
+		original_zend_execute_ex = zend_execute_ex;
+		zend_execute_ex = my_execute_ex;
+	}
 
-	return SUCCESS;
+	return ini_status;
 }
 
 /* }}} */
@@ -128,6 +198,7 @@ PHP_MINFO_FUNCTION(proxy_all_classes)
 	php_info_print_table_start();
 	php_info_print_table_header(2, "proxy_all_classes support", "enabled");
 	php_info_print_table_end();
+	DISPLAY_INI_ENTRIES();
 }
 /* }}} */
 
