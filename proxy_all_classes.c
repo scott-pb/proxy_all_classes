@@ -13,8 +13,6 @@
 #include "zend_attributes.h"
 #include "zend_types.h"
 #include "zend_API.h"
-#include "ext/pdo/php_pdo.h"
-#include "ext/pdo/php_pdo_driver.h"
 
 /* For compatibility with older PHP versions */
 #ifndef ZEND_PARSE_PARAMETERS_NONE
@@ -102,8 +100,10 @@ void my_execute_ex(zend_execute_data *execute_data)
 	}
 
 	zend_string *proxy_attributes =  zend_string_tolower(zend_string_init(proxy_all_classes_globals.proxy_attributes,strlen(proxy_all_classes_globals.proxy_attributes),0));
+
+	zend_attribute *zend_proxy_attribute = zend_get_attribute_str(execute_data->func->common.attributes, ZSTR_VAL(proxy_attributes),ZSTR_LEN(proxy_attributes));
 	// 获取方法上的指定注解
-	if (zend_get_attribute_str(execute_data->func->common.attributes, ZSTR_VAL(proxy_attributes),ZSTR_LEN(proxy_attributes)) == NULL)
+	if (zend_proxy_attribute == NULL)
 	{
 		original_zend_execute_ex(execute_data);
 		return;
@@ -115,9 +115,11 @@ void my_execute_ex(zend_execute_data *execute_data)
 		return;
 	}
 
+	
+
 	// 代理类
 	zend_string *class_name = zend_string_init(proxy_all_classes_globals.proxy_class_name, strlen(proxy_all_classes_globals.proxy_class_name), 0);
-	zend_class_entry *ce = zend_fetch_class(class_name, ZEND_FETCH_CLASS_AUTO);
+	zend_class_entry *ce = zend_lookup_class(class_name);
 	if (ce == NULL)
 	{
 		php_error_docref(NULL, E_WARNING, "Class %s not found", proxy_all_classes_globals.proxy_class_name);
@@ -131,14 +133,21 @@ void my_execute_ex(zend_execute_data *execute_data)
 		original_zend_execute_ex(execute_data);
 		return;
 	}
+
+
+	char *conn_name = zend_proxy_attribute->args[0].value.value.str ? ZSTR_VAL(zend_proxy_attribute->args[0].value.value.str) : "";
+	
+	//php_printf("%s\n",zend_proxy_attribute->args[0].value.value.str->val);
+
 	// 需要代理的 类名+方法名设置为代理类的属性
 	zend_declare_property_string(ce, "className", strlen("className"), execute_data->func->common.scope->name->val, ZEND_ACC_PUBLIC);
 	zend_declare_property_string(ce, "method", strlen("method"), execute_data->func->common.function_name->val, ZEND_ACC_PUBLIC);
+	zend_declare_property_string(ce, "connName", strlen("connName"), conn_name, ZEND_ACC_PUBLIC);
 
 	zval obj;
 	object_init_ex(&obj, ce);
-	zval *ret = execute_data->return_value;
 
+	zval *ret = execute_data->return_value;
 	// 需要代理类的参数
 	uint32_t param_count = ZEND_CALL_NUM_ARGS(execute_data);
 
