@@ -136,9 +136,6 @@ void my_execute_ex(zend_execute_data *execute_data)
 
 
 	char *conn_name = zend_proxy_attribute->args[0].value.value.str ? ZSTR_VAL(zend_proxy_attribute->args[0].value.value.str) : "";
-	
-	//php_printf("%s\n",zend_proxy_attribute->args[0].value.value.str->val);
-
 	// 需要代理的 类名+方法名设置为代理类的属性
 	zend_declare_property_string(ce, "className", strlen("className"), execute_data->func->common.scope->name->val, ZEND_ACC_PUBLIC);
 	zend_declare_property_string(ce, "method", strlen("method"), execute_data->func->common.function_name->val, ZEND_ACC_PUBLIC);
@@ -151,7 +148,7 @@ void my_execute_ex(zend_execute_data *execute_data)
 	// 需要代理类的参数
 	uint32_t param_count = ZEND_CALL_NUM_ARGS(execute_data);
 
-	// fbc->common.num_args = param_count;
+	
 	//  新增一个栈 且在栈顶
 	zend_execute_data *call = zend_vm_stack_push_call_frame(ZEND_CALL_TOP_FUNCTION, fbc, param_count, Z_OBJ_P(&obj));
 
