@@ -51,6 +51,9 @@ class TestService
             'name'=> 'testing partitions '.$a
         ]);
         
+        //测试报错 事务是否回滚
+        //throw new \Exception('error');
+
         DB::table('test')->where('id',1)->update([
             'name'=> 'testing partitions '.$b
         ]);
