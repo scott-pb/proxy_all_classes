@@ -18,6 +18,19 @@ proxy.method=transaction
 ```
 ### 代码示例(通过注解实现方法事务)
 
+- 注解类
+```php
+<?php
+
+namespace App\Attributes;
+
+#[\Attribute(\Attribute::TARGET_METHOD)]
+class TranslationAttribute
+{
+    
+}
+```
+
 - php使用
 ```php
 <?php
